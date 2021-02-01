@@ -1,0 +1,67 @@
+
+version: '3.5'
+
+networks:
+  vlan_10:
+    name: vlan_10
+    driver: bridge
+  vlan_20:
+    name: vlan_20
+    driver: bridge
+  vlan_30:
+    name: vlan_30
+    driver: bridge
+
+
+services:
+
+  zabbix:
+    image: zabbix/zabbix-appliance
+    container_name: zabbix
+    ports:
+      - "9000:80"
+      - "10050:10050"
+      - "162:162"
+      - "161:161"
+    networks:
+      - vlan_10
+    depends_on:
+      - nginx
+
+  nginx:
+    build: ./
+    container_name: proxyreverso
+    ports:
+      - "80:80"
+    networks:
+      - vlan_10
+      - vlan_20
+    links:
+      - web01
+      - web02
+    depends_on:
+      - web01
+
+  web01:
+    image: httpd:latest
+    container_name: web01
+    volumes:
+      - ./web01/:/usr/local/apache2/htdocs/
+    
+    ports:
+      - "81:80"
+    networks:
+      - vlan_20
+    depends_on:
+      - web02
+
+  web02:
+    image: httpd:latest
+    container_name: web02
+    volumes:
+      - ./web02/:/usr/local/apache2/htdocs/
+ 
+    ports:
+      - "82:80"
+    networks:
+      - vlan_20
