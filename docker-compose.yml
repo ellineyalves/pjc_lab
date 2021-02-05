@@ -1,19 +1,38 @@
+version: "3.5"
 
-version: '3.5'
-
+#Criação das Redes e definição das subredes
 networks:
   vlan_10:
     name: vlan_10
     driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
   vlan_20:
     name: vlan_20
     driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.2.0/24
   vlan_30:
     name: vlan_30
     driver: bridge
+    ipam: 
+      config:
+        - subnet: 10.1.1.0/24
 
-
+#A partir daqui criaremos os serviços
 services:
+  docker-firewall:
+      image: 'vitobotta/docker-firewall:0.1.0'
+      container_name: firewall
+      restart: unless-stopped
+      environment:
+          - 'OPEN_PORTS=80,443'
+          - 'ACCEPT_ALL_FROM='
+          - CHAIN=DOCKER-FIREWALL
+      network_mode: host
+      privileged: true
 
   zabbix:
     image: zabbix/zabbix-appliance
@@ -21,40 +40,42 @@ services:
     ports:
       - "9000:80"
       - "10050:10050"
-      - "162:162"
-      - "161:161"
     networks:
       - vlan_10
     depends_on:
-      - nginx
+      - nginx-proxy
 
-  nginx:
-    build: ./
-    container_name: proxyreverso
+  nginx-proxy:
+    image: jwilder/nginx-proxy
     ports:
-       - 80:80
-     container_name: nginx-proxy
-      volumes:
-       - /var/run/docker.sock:/tmp/docker.sock:ro
-       - nginx-vhost:/etc/nginx/vhost.d
-       - nginx-html:/usr/share/nginx/html
-      networks:
-       - vlan_10
-       - vlan_20
-    links:
-      - web01
-      - web02
+    #Definiremos a porta que será exposta escuta do proxy
+      - 80:80
+    container_name: nginx-proxy
+    volumes:
+    # Criaremos o volume para deixar as informaçoes persistente no container
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - nginx-vhost:/etc/nginx/vhost.d
+      - nginx-html:/usr/share/nginx/html
+    networks:
+      - vlan_10
+      - vlan_20
+
     depends_on:
+    #O container do proxy só será iniciado caso o serviço do
+    # web01 (apache) estiver online
       - web01
 
   web01:
     image: httpd:latest
     container_name: web01
+    #definiremos o nome DNS do container
+    environment:
+      VIRTUAL_HOST: www.lab.local
     volumes:
+    #volume onde se encontram os arquivos .html do web_server_01
       - ./web01/:/usr/local/apache2/htdocs/
-    
     ports:
-      - "81:80"
+      - 8001
     networks:
       - vlan_20
     depends_on:
@@ -62,11 +83,19 @@ services:
 
   web02:
     image: httpd:latest
+
     container_name: web02
+    environment:
+      VIRTUAL_HOST: www.lab2.local
+    #volume onde se encontram os arquivos .html do web_server_02
     volumes:
       - ./web02/:/usr/local/apache2/htdocs/
- 
+
     ports:
-      - "82:80"
+      - 8002
     networks:
       - vlan_20
+
+volumes:
+  nginx-vhost:
+  nginx-html:
